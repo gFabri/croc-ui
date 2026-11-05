@@ -41,7 +41,7 @@ impl CrocApp {
 
     fn launch<F>(&mut self, configure: F, label: &str)
     where F: FnOnce(&mut Command) + Send + 'static {
-        let executable = if self.croc_path.trim().is_empty() { "croc".into() } else { self.croc_path.trim().into() };
+        let executable: String = if self.croc_path.trim().is_empty() { "croc".into() } else { self.croc_path.trim().into() };
         let (tx, rx) = mpsc::channel();
         self.events = Some(rx);
         self.running = true;

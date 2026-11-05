@@ -102,6 +102,8 @@ impl eframe::App for CrocApp {
             ctx.request_repaint();
         }
         egui::CentralPanel::default().show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+            ui.set_width(ui.available_width().min(900.0));
             ui.add_space(24.0);
             ui.horizontal(|ui| {
                 ui.heading(RichText::new("croc").size(30.0).strong().color(Color32::from_rgb(104, 135, 255)));
@@ -147,6 +149,7 @@ impl eframe::App for CrocApp {
                 ui.horizontal(|ui| { ui.label("Ejecutable croc:"); ui.text_edit_singleline(&mut self.croc_path); });
                 ui.add_space(6.0);
                 if ui.add_enabled(!self.running, egui::Button::new("↻  Buscar actualización de croc")).clicked() { self.update_croc(); }
+            });
             });
         });
     }

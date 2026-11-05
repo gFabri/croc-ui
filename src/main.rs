@@ -125,7 +125,8 @@ impl eframe::App for CrocApp {
                     if let Some(dir) = &self.destination { ui.label(dir.to_string_lossy().to_string()); }
                     ui.add_space(8.0);
                     if ui.add_enabled(!self.code.trim().is_empty() && !self.running, egui::Button::new("Recibir ahora  →")).clicked() { self.start_receive(); }
-            });
+                });
+            }
             ui.add_space(16.0);
             ui.horizontal(|ui| { ui.label(if self.running { "●" } else { "○" }); ui.label(&self.status); });
             if !self.log.is_empty() { ui.add_space(8.0); ui.add(egui::TextEdit::multiline(&mut self.log).desired_rows(5).interactive(false)); }

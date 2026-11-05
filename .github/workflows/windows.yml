@@ -35,9 +35,20 @@ jobs:
       - name: Compilar release
         run: cargo build --release
 
-      - name: Publicar ejecutable
+      - name: Empaquetar aplicación
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item target/release/croc-ui.exe dist/croc-ui.exe
+          Copy-Item README.md dist/README.md
+          Compress-Archive -Path dist/croc-ui.exe, dist/README.md -DestinationPath croc-ui-windows-x64.zip
+          (Get-FileHash croc-ui-windows-x64.zip -Algorithm SHA256).Hash | Out-File croc-ui-windows-x64.sha256 -Encoding ascii
+
+      - name: Publicar paquete Windows
         uses: actions/upload-artifact@v4
         with:
           name: croc-ui-windows-x64
-          path: target/release/croc-ui.exe
+          path: |
+            croc-ui-windows-x64.zip
+            croc-ui-windows-x64.sha256
           if-no-files-found: error

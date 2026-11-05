@@ -5,6 +5,7 @@ use std::{path::PathBuf, process::{Command, Stdio}, sync::mpsc::{self, Receiver}
 
 #[derive(Default)]
 struct CrocApp {
+    mode: Mode,
     files: Vec<PathBuf>,
     code: String,
     croc_path: String,
@@ -15,6 +16,9 @@ struct CrocApp {
     events: Option<Receiver<String>>,
 }
 
+#[derive(Default, PartialEq)]
+enum Mode { #[default] Send, Receive }
+
 impl CrocApp {
     fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         Self { croc_path: "croc".into(), status: "Listo para transferir".into(), ..Default::default() }
@@ -23,8 +27,10 @@ impl CrocApp {
     fn start_send(&mut self) {
         if self.files.is_empty() || self.running { return; }
         let paths = self.files.clone();
+        let custom_code = self.code.trim().to_owned();
         self.launch(move |c| {
             c.arg("send");
+            if !custom_code.is_empty() { c.arg("--code").arg(custom_code); }
             for path in paths { c.arg(path); }
         }, "Enviando archivos…");
     }
@@ -39,6 +45,11 @@ impl CrocApp {
         }, "Recibiendo archivos…");
     }
 
+    fn update_croc(&mut self) {
+        if self.running { return; }
+        self.launch(|c| { c.arg("update"); }, "Buscando actualizaciones de croc…");
+    }
+
     fn launch<F>(&mut self, configure: F, label: &str)
     where F: FnOnce(&mut Command) + Send + 'static {
         let executable: String = if self.croc_path.trim().is_empty() { "croc".into() } else { self.croc_path.trim().into() };
@@ -49,6 +60,11 @@ impl CrocApp {
         self.log.clear();
         thread::spawn(move || {
             let mut command = Command::new(executable);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            }
             configure(&mut command);
             command.stdout(Stdio::piped()).stderr(Stdio::piped());
             let result = command.output();
@@ -82,25 +98,25 @@ impl eframe::App for CrocApp {
             ui.add_space(18.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 12.0;
-                if ui.selectable_label(self.files.len() > 0, "↑  Enviar").clicked() { self.code.clear(); }
-                if ui.selectable_label(!self.code.is_empty(), "↓  Recibir").clicked() { self.files.clear(); }
+                if ui.selectable_label(self.mode == Mode::Send, "↑  Enviar").clicked() { self.mode = Mode::Send; }
+                if ui.selectable_label(self.mode == Mode::Receive, "↓  Recibir").clicked() { self.mode = Mode::Receive; }
             });
             ui.add_space(12.0);
-            ui.columns(2, |columns| {
-                let left = &mut columns[0];
-                left.group(|ui| {
+            if self.mode == Mode::Send {
+                ui.group(|ui| {
                     ui.heading("Enviar archivos");
-                    ui.label("Selecciona uno o varios archivos para generar un código.");
+                    ui.label("Selecciona archivos y comparte el código generado.");
                     ui.add_space(10.0);
                     if ui.button("＋  Elegir archivos").clicked() {
                         if let Some(picked) = rfd::FileDialog::new().pick_files() { self.files = picked; }
                     }
                     for file in &self.files { ui.label(format!("• {}", file.file_name().unwrap_or_default().to_string_lossy())); }
+                    ui.add(egui::TextEdit::singleline(&mut self.code).hint_text("Clave personalizada (opcional)"));
                     ui.add_space(8.0);
                     if ui.add_enabled(!self.files.is_empty() && !self.running, egui::Button::new("Enviar ahora  →")).clicked() { self.start_send(); }
                 });
-                let right = &mut columns[1];
-                right.group(|ui| {
+            } else {
+                ui.group(|ui| {
                     ui.heading("Recibir archivos");
                     ui.label("Pega el código que te compartieron.");
                     ui.add_space(10.0);
@@ -109,7 +125,6 @@ impl eframe::App for CrocApp {
                     if let Some(dir) = &self.destination { ui.label(dir.to_string_lossy().to_string()); }
                     ui.add_space(8.0);
                     if ui.add_enabled(!self.code.trim().is_empty() && !self.running, egui::Button::new("Recibir ahora  →")).clicked() { self.start_receive(); }
-                });
             });
             ui.add_space(16.0);
             ui.horizontal(|ui| { ui.label(if self.running { "●" } else { "○" }); ui.label(&self.status); });
@@ -117,6 +132,8 @@ impl eframe::App for CrocApp {
             ui.add_space(12.0);
             egui::CollapsingHeader::new("Configuración avanzada").show(ui, |ui| {
                 ui.horizontal(|ui| { ui.label("Ejecutable croc:"); ui.text_edit_singleline(&mut self.croc_path); });
+                ui.add_space(6.0);
+                if ui.add_enabled(!self.running, egui::Button::new("↻  Buscar actualización de croc")).clicked() { self.update_croc(); }
             });
         });
     }

@@ -47,7 +47,19 @@ impl CrocApp {
 
     fn update_croc(&mut self) {
         if self.running { return; }
-        self.launch(|c| { c.arg("update"); }, "Buscando actualizaciones de croc…");
+        let target = self.croc_path.trim().to_owned();
+        let (tx, rx) = mpsc::channel();
+        self.events = Some(rx);
+        self.running = true;
+        self.status = "Descargando la última versión de croc…".into();
+        self.log.clear();
+        thread::spawn(move || {
+            let target = if target.is_empty() { "croc".to_owned() } else { target };
+            let script = format!(r#"$ErrorActionPreference='Stop'; $r=Invoke-RestMethod 'https://api.github.com/repos/schollz/croc/releases/latest'; $a=$r.assets | Where-Object {{$_.name -like '*Windows-64bit.zip'}} | Select-Object -First 1; if (-not $a) {{ throw 'No se encontró el paquete de croc para Windows x64' }}; $z=Join-Path $env:TEMP 'croc-latest.zip'; $d=Join-Path $env:TEMP 'croc-latest'; Invoke-WebRequest $a.browser_download_url -OutFile $z; Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue; Expand-Archive $z $d -Force; $e=Get-ChildItem $d -Filter 'croc.exe' -Recurse | Select-Object -First 1; if (-not $e) {{ throw 'El paquete no contiene croc.exe' }}; $t='{}'; if ($t -eq 'croc') {{ $cmd=Get-Command croc -ErrorAction SilentlyContinue; if ($cmd) {{ $t=$cmd.Source }} else {{ $t=Join-Path (Get-Location) 'croc.exe' }} }}; Copy-Item $e.FullName $t -Force; "Actualizado a $($r.tag_name): $t"; Remove-Item $z,$d -Recurse -Force -ErrorAction SilentlyContinue"#, target.replace('"', "'"));
+            let result = Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &script]).output();
+            let message = match result { Ok(o) => format!("{}\n{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr)), Err(e) => format!("No se pudo actualizar croc: {e}") };
+            let _ = tx.send(message);
+        });
     }
 
     fn launch<F>(&mut self, configure: F, label: &str)
